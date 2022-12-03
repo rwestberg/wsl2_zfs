@@ -25,13 +25,15 @@ jobs:
           build-essential flex bison dwarves libssl-dev libelf-dev python3
           autoconf automake libtool gawk alien fakeroot dkms libblkid-dev uuid-dev libudev-dev libssl-dev zlib1g-dev libaio-dev libattr1-dev libelf-dev linux-headers-generic python3-dev python3-setuptools python3-cffi libffi-dev
 
-      - name: 'Prepare ZFS source'
-        run: |
-          curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gz
-          tar xfz zfs.tar.gz
-
       - name: 'Prepare WSL2 kernel source'
         run: |
           curl -L https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${{ inputs.kernel_ver }}.tar.gz -o wsl2.tar.gz
           tar xfz wsl2.tar.gz
+          cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
+          make -j$(nproc) prepare KCONFIG_CONFIG=$(pwd)/Microsoft/config-wsl
+
+      - name: 'Prepare ZFS source'
+        run: |
+          curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gz
+          tar xfz zfs.tar.gz
           ls -al .
