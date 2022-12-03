@@ -2,7 +2,7 @@ name: 'build'
 description: 'Builds a WSL2 kernel with ZFS support'
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       kernel_ver:
         description: 'WSL2 kernel version'
