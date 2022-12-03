@@ -1,5 +1,4 @@
-name: 'build'
-description: 'Builds a WSL2 kernel with ZFS support'
+name: 'Build'
 
 on:
   workflow_dispatch:
