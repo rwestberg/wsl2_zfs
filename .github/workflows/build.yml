@@ -36,4 +36,13 @@ jobs:
         run: |
           curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gz
           tar xfz zfs.tar.gz
-          ls -al .
+          zfs-zfs-${{ inputs.zfs_ver }}
+          sh autogen.sh
+          ./configure --with-linux=$(pwd)/../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }} --with-linux-obj=$(pwd)/../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }} --enable-linux-builtin
+          ./copy-builtin ../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
+
+      - name: 'Build kernel'
+          run: |
+            cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
+            echo "CONFIG_ZFS=y" >> Microsoft/config-wsl
+            make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
