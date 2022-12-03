@@ -27,7 +27,7 @@ jobs:
 
       - name: 'Prepare ZFS source'
         run: |
-          curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gfz
+          curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gz
           tar xfz zfs.tar.gz
 
       - name: 'Prepare WSL2 kernel source'
