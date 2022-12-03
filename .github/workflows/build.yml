@@ -13,6 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 'Download WSL2 kernel source'
+      - name: 'Prepare WSL2 kernel source'
         run: |
           curl https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${{ inputs.kernel_ver }}.tar.gz -o wsl2.tar.gz
+          ls -al .
+          tar xvfz wsl2.tar.gz
