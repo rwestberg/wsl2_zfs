@@ -6,6 +6,8 @@ on:
       kernel_ver:
         description: 'WSL2 kernel version'
         required: true
+        type: string
+        default: '5.15.79.1'
 
 jobs:
   build:
@@ -13,4 +15,4 @@ jobs:
     steps:
       - name: 'Download WSL2 kernel source'
         run: |
-          curl https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${{ inputs.kernel_ver }}.tar.gz -O wsl2.tar.gz
+          curl https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${{ inputs.kernel_ver }}.tar.gz -o wsl2.tar.gz
