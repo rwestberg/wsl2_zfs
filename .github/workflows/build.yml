@@ -42,7 +42,7 @@ jobs:
           ./copy-builtin ../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
 
       - name: 'Build kernel'
-          run: |
-            cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
-            echo "CONFIG_ZFS=y" >> Microsoft/config-wsl
-            make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
+        run: |
+          cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
+          echo "CONFIG_ZFS=y" >> Microsoft/config-wsl
+          make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
