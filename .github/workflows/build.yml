@@ -8,11 +8,27 @@ on:
         required: true
         type: string
         default: '5.15.79.1'
+      zfs_ver:
+        description: 'ZFS version'
+        required: true
+        type: string
+        default: '2.1.7'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: 'Install build dependencies'
+        run: >
+          sudo apt install
+          build-essential flex bison dwarves libssl-dev libelf-dev bc python3
+          autoconf automake libtool gawk alien fakeroot dkms libblkid-dev uuid-dev libudev-dev libssl-dev zlib1g-dev libaio-dev libattr1-dev libelf-dev linux-headers-generic python3-dev python3-setuptools python3-cffi libffi-dev
+
+      - name: 'Prepare ZFS source'
+        run: |
+          curl -L https://github.com/openzfs/zfs/archive/refs/tags/zfs-${{ inputs.zfs_ver }}.tar.gz -o zfs.tar.gfz
+          tar xfz zfs.tar.gz
+
       - name: 'Prepare WSL2 kernel source'
         run: |
           curl -L https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${{ inputs.kernel_ver }}.tar.gz -o wsl2.tar.gz
