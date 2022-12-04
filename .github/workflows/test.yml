@@ -4,9 +4,27 @@ on:
   workflow_dispatch
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
     steps:
       - name: 'Install VirtualBox'
+        run: brew install virtualbox
+
+      - name: 'Download Debian image'
+        run: curl -L https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-11.5.0-amd64-netinst.iso -o debian.iso
+
+      - name: 'Create virtual machine'
         run: |
-          brew install virtualbox
+          VBoxManage createvm --name zfs_test --ostype "Debian_64" --register --basefolder `pwd`
+          VBoxManage modifyvm zfs_test --ioapic on
+          VBoxManage modifyvm zfs_test --memory 1024 --vram 128
+          VBoxManage modifyvm zfs_test --nic1 nat
+          VBoxManage createhd --filename `pwd`/zfs_test/zfs_test_disk.vdi --size 80000 --format VDI
+          VBoxManage storagectl zfs_test --name "SATA Controller" --add sata --controller IntelAhci
+          VBoxManage storageattach zfs_test --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium  `pwd`/zfs_test/zfs_test_disk.vdi
+          VBoxManage storagectl zfs_test --name "IDE Controller" --add ide --controller PIIX4
+          VBoxManage storageattach zfs_test --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium `pwd`/debian.iso
+          VBoxManage modifyvm zfs_test --boot1 dvd --boot2 disk --boot3 none --boot4 none
+
+      - name: 'Start virtual machine'
+        run: VBoxHeadless --startvm zfs_test
