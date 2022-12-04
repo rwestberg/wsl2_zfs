@@ -9,4 +9,4 @@ jobs:
     steps:
       - name: 'Install VirtualBox'
         run: |
-          brew search virtualbox
+          brew install virtualbox
