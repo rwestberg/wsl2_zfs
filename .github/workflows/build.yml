@@ -44,5 +44,12 @@ jobs:
       - name: 'Build kernel'
         run: |
           cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
+          sed -i Microsoft/config-wsl -e 's/standard-WSL2/standard-WSL2-ZFS/'
           echo "CONFIG_ZFS=y" >> Microsoft/config-wsl
           make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
+
+      - name: 'Publish built kernel'
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-wsl2-zfs
+          path: WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}/arch/x86/boot/bzImage
