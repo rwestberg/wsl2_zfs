@@ -1,0 +1,12 @@
+name: 'Build'
+
+on:
+  workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 'Install VirtualBox'
+        run: |
+          brew search virtualbox
