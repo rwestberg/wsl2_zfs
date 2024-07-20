@@ -41,7 +41,7 @@ jobs:
           ./configure --with-linux=$(pwd)/../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }} --with-linux-obj=$(pwd)/../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }} --enable-linux-builtin
           ./copy-builtin ../WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
 
-      - name: 'Apply module configuration from 5.15'
+      - name: 'Apply module configuration from 5.15 (part 1)'
         run: |
           cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
           sed -i Microsoft/config-wsl -e 's/CONFIG_ACPI_AC=m/CONFIG_ACPI_AC=y/'
@@ -179,6 +179,10 @@ jobs:
           sed -i Microsoft/config-wsl -e 's/CONFIG_IP6_NF_NAT=m/CONFIG_IP6_NF_NAT=y/'
           sed -i Microsoft/config-wsl -e 's/CONFIG_IP6_NF_TARGET_MASQUERADE=m/CONFIG_IP6_NF_TARGET_MASQUERADE=y/'
           sed -i Microsoft/config-wsl -e 's/CONFIG_IP6_NF_TARGET_NPT=m/CONFIG_IP6_NF_TARGET_NPT=y/'
+
+      - name: 'Apply module configuration from 5.15 (part 2)'
+        run: |
+          cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
           sed -i Microsoft/config-wsl -e 's/CONFIG_IP_SCTP=m/CONFIG_IP_SCTP=y/'
           sed -i Microsoft/config-wsl -e 's/CONFIG_INET_SCTP_DIAG=m/CONFIG_INET_SCTP_DIAG=y/'
           sed -i Microsoft/config-wsl -e 's/CONFIG_STP=m/CONFIG_STP=y/'
