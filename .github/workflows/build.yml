@@ -7,12 +7,12 @@ on:
         description: 'WSL2 kernel version'
         required: true
         type: string
-        default: '5.15.79.1'
+        default: '6.6.36.3'
       zfs_ver:
         description: 'ZFS version'
         required: true
         type: string
-        default: '2.1.7'
+        default: '2.2.4'
 
 jobs:
   build:
