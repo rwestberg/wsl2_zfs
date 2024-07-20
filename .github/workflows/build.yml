@@ -44,7 +44,8 @@ jobs:
       - name: 'Build kernel'
         run: |
           cd WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}
-          sed -i Microsoft/config-wsl -e 's/standard-WSL2/standard-WSL2-ZFS/'
+          sed -i Microsoft/config-wsl -e 's/standard-WSL2/standard-WSL2-ZFS-${{ inputs.zfs_ver }}/'
+          sed -i Microsoft/config-wsl -e 's/=m/=y/'
           echo "CONFIG_ZFS=y" >> Microsoft/config-wsl
           make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
 
