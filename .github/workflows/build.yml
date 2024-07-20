@@ -49,7 +49,8 @@ jobs:
           make -j$(nproc) KCONFIG_CONFIG=Microsoft/config-wsl
 
       - name: 'Publish built kernel'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: kernel-wsl2-zfs
+          name: kernel-wsl2-${{ inputs.kernel_ver }}-zfs-${{ inputs.zfs_ver }}
           path: WSL2-Linux-Kernel-linux-msft-wsl-${{ inputs.kernel_ver }}/arch/x86/boot/bzImage
+          overwrite: true
