@@ -1,13 +1,15 @@
 # WSL2 with ZFS
 
-This repository builds OpenZFS for modern WSL2 without replacing the Microsoft WSL kernel. The primary artifact is a merged `modules.vhdx` for one exact WSL kernel release. It contains the stock WSL module tree plus OpenZFS kernel modules, and it is loaded through `.wslconfig` `kernelModules`.
+This repository builds OpenZFS modules for modern WSL2 without replacing the Microsoft WSL kernel. The primary artifact is a ZFS-only module overlay for one exact WSL kernel release. The Windows installer copies the stock WSL `modules.vhd`, merges the ZFS modules into that copy, and points `.wslconfig` `kernelModules` at the merged local VHD.
 
 ## Requirements
 
 - Store-delivered WSL new enough to support `[wsl2] kernelModules`.
 - x86_64 WSL kernel. ARM64 is not built yet.
+- Administrator access on Windows. The installer uses `wsl --mount` to edit a copied modules VHD.
+- An installed WSL distro with `depmod` and `modinfo` available.
 - A release artifact matching the exact WSL kernel shown by `uname -r`.
-- OpenZFS user-space `.deb` packages from the same workflow run as the `modules.vhdx`.
+- OpenZFS user-space `.deb` packages from the same workflow run as the module overlay.
 
 Check the running kernel inside WSL:
 
@@ -16,7 +18,7 @@ uname -r
 # Example: 6.18.26.1-microsoft-standard-WSL2
 ```
 
-For that example, run the build workflow with `kernel_ver=6.18.26.1`. A module VHDX built for another kernel release will not load reliably.
+For that example, run the build workflow with `kernel_ver=6.18.26.1`. ZFS modules built for another kernel release will not load reliably.
 
 ## Build
 
@@ -30,20 +32,22 @@ Inputs:
 
 The workflow produces:
 
-- `wsl2-zfs-<kernel-release>-openzfs-<zfs-version>.modules.vhdx`
-- OpenZFS user-space `.deb` packages
-- `wsl2-zfs-<kernel-release>-openzfs-<zfs-version>.build-kit.tar.gz`
-- `SHA256SUMS`
+- `<artifact-base>-zfs-module-overlay`: the ZFS kernel module overlay.
+- `<artifact-base>-runtime-debs`: the OpenZFS runtime `.deb` packages needed inside a WSL distro.
+- `<artifact-base>-build-kit`: kernel build metadata for maintainers and advanced local rebuilds.
+- `ARTIFACTS.txt` and `SHA256SUMS` in the package/build-kit artifacts.
+
+When `publish_release=true`, the release contains the same groups as zip files.
 
 ## Install
 
-On Windows, install the module VHDX:
+Run the Windows installer from an elevated PowerShell session:
 
 ```powershell
-.\scripts\install-wsl2-zfs.ps1 -ModulesVhdx .\wsl2-zfs-6.18.26.1-microsoft-standard-WSL2-openzfs-2.4.2.modules.vhdx
+.\scripts\install-wsl2-zfs.ps1 -ZfsModules .\wsl2-zfs-6.18.26.1-microsoft-standard-WSL2-openzfs-2.4.2-zfs-module-overlay.zip
 ```
 
-The installer copies the VHDX to `C:\WSL\wsl2_zfs\modules.vhdx`, backs up `%UserProfile%\.wslconfig` when it exists, updates only the `[wsl2] kernelModules` key, and runs `wsl --shutdown`.
+The installer accepts either the downloaded `*-zfs-module-overlay.zip` artifact or an extracted `.zfs-modules.tar.gz` file. It copies `C:\Program Files\WSL\tools\modules.vhd` to `C:\WSL\wsl2_zfs\modules.vhd`, mounts the copy through WSL, merges the ZFS modules, runs `depmod`, backs up `%UserProfile%\.wslconfig` when it exists, updates only the `[wsl2] kernelModules` key, and runs `wsl --shutdown`.
 
 Inside each WSL distro that should use ZFS, install the matching user-space packages from the same artifact:
 
@@ -55,9 +59,9 @@ modinfo zfs | head
 
 ## Runtime Validation
 
-There is no hosted GitHub Actions smoke test for WSL runtime behavior. Loading a custom WSL module VHDX requires a real Windows WSL2 environment, and GitHub-hosted runners are not a dependable target for that kind of nested virtualization test.
+There is no hosted GitHub Actions smoke test for WSL runtime behavior. Editing and loading a custom WSL module VHD requires a real Windows WSL2 environment with administrator access, and GitHub-hosted runners are not a dependable target for that kind of nested virtualization test.
 
-After installing the VHDX and packages on a Windows machine, validate manually:
+After installing the overlay and packages on a Windows machine, validate manually:
 
 ```bash
 sudo modprobe zfs
@@ -80,11 +84,11 @@ Restore the `.wslconfig` backup created by the installer, or remove the `kernelM
 wsl --shutdown
 ```
 
-That returns WSL to the stock module configuration. You can also remove the generated OpenZFS packages inside a distro with `sudo apt remove` after exporting or destroying any test pools you created.
+That returns WSL to the stock module configuration. You can also remove `C:\WSL\wsl2_zfs\modules.vhd` and uninstall the generated OpenZFS packages inside a distro with `sudo apt remove` after exporting or destroying any test pools you created.
 
 ## Troubleshooting
 
 - `Invalid boolean value for key 'wsl2.kernelModules'`: WSL is too old for `kernelModules`; update WSL first.
-- `invalid module format` or unknown symbols: the VHDX does not match the running `uname -r`; rebuild for the exact WSL kernel release.
-- `E_ACCESSDENIED` while loading the VHDX: keep the modules VHDX outside the user profile, for example under `C:\WSL\wsl2_zfs`.
-- `modprobe: FATAL: Module zfs not found`: confirm `.wslconfig` points at the copied VHDX, run `wsl --shutdown`, then verify the matching `.deb` packages are installed inside the distro.
+- `invalid module format` or unknown symbols: the ZFS overlay does not match the running `uname -r`; rebuild for the exact WSL kernel release.
+- `wsl --mount` fails with an access error: run the installer from an elevated PowerShell session.
+- `modprobe: FATAL: Module zfs not found`: confirm `.wslconfig` points at `C:\WSL\wsl2_zfs\modules.vhd`, run `wsl --shutdown`, then verify the matching `.deb` packages are installed inside the distro.

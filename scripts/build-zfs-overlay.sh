@@ -56,8 +56,8 @@ ZFS_ARCHIVE="$WORK_DIR/zfs.tar.gz"
 ZFS_EXTRACTED_DIR="$WORK_DIR/zfs-${ZFS_VER}"
 ZFS_MODULE_DIR="$WORK_DIR/zfs-${ZFS_VER}-modules"
 ZFS_PACKAGE_DIR="$WORK_DIR/zfs-${ZFS_VER}-packages"
-STOCK_MODROOT="$WORK_DIR/stock-modules"
-MERGED_MODROOT="$WORK_DIR/merged-modules"
+ZFS_MODROOT="$WORK_DIR/zfs-modules"
+ZFS_OVERLAY_ROOT="$WORK_DIR/zfs-module-overlay"
 
 log "Fetching WSL kernel linux-msft-wsl-${KERNEL_VER}"
 curl -fL "https://github.com/microsoft/WSL2-Linux-Kernel/archive/refs/tags/linux-msft-wsl-${KERNEL_VER}.tar.gz" -o "$KERNEL_ARCHIVE"
@@ -76,11 +76,8 @@ make -C "$KERNEL_DIR" -j"$NPROC" KCONFIG_CONFIG=Microsoft/config-wsl
 KERNEL_RELEASE=$(make -C "$KERNEL_DIR" -s KCONFIG_CONFIG=Microsoft/config-wsl kernelrelease)
 [[ -n "$KERNEL_RELEASE" ]] || fail "could not determine kernel release"
 ARTIFACT_BASE="wsl2-zfs-${KERNEL_RELEASE}-openzfs-${ZFS_VER}"
-VHDX_PATH="$ARTIFACT_DIR/${ARTIFACT_BASE}.modules.vhdx"
+ZFS_MODULES_PATH="$ARTIFACT_DIR/${ARTIFACT_BASE}.zfs-modules.tar.gz"
 BUILD_KIT_PATH="$ARTIFACT_DIR/${ARTIFACT_BASE}.build-kit.tar.gz"
-
-log "Installing stock WSL modules into staging tree"
-make -C "$KERNEL_DIR" INSTALL_MOD_PATH="$STOCK_MODROOT" modules_install
 
 log "Fetching OpenZFS ${ZFS_VER}"
 curl -fL "https://github.com/openzfs/zfs/releases/download/zfs-${ZFS_VER}/zfs-${ZFS_VER}.tar.gz" -o "$ZFS_ARCHIVE"
@@ -97,21 +94,30 @@ log "Configuring OpenZFS kernel modules for ${KERNEL_RELEASE}"
   ./configure --with-linux="$KERNEL_DIR" --with-linux-obj="$KERNEL_DIR"
 )
 
-log "Preparing merged stock module tree"
-mkdir -p "$MERGED_MODROOT"
-cp -a "$STOCK_MODROOT"/. "$MERGED_MODROOT"/
-
-log "Building and installing OpenZFS kernel modules into merged tree"
+log "Building OpenZFS kernel modules"
 make -C "$ZFS_MODULE_DIR/module" -j"$NPROC"
-make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" modules_install
 
-find "$MERGED_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
-  fail "zfs kernel module was not installed into merged module tree"
+log "Installing OpenZFS kernel modules into overlay tree"
+make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$ZFS_MODROOT" INSTALL_MOD_STRIP=1 modules_install
+[[ -d "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE" ]] ||
+  fail "zfs module install did not create $ZFS_MODROOT/lib/modules/$KERNEL_RELEASE"
 
-depmod -b "$MERGED_MODROOT" "$KERNEL_RELEASE"
+log "Packaging OpenZFS module overlay"
+mkdir -p "$ZFS_OVERLAY_ROOT/.wsl2-zfs"
+cp -a "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE"/. "$ZFS_OVERLAY_ROOT"/
+find "$ZFS_OVERLAY_ROOT" -maxdepth 1 -type f -name 'modules.*' -delete
+rm -f "$ZFS_OVERLAY_ROOT/build" "$ZFS_OVERLAY_ROOT/source"
+printf '%s\n' "$KERNEL_RELEASE" > "$ZFS_OVERLAY_ROOT/.wsl2-zfs/KERNEL_RELEASE"
+printf '%s\n' "$ZFS_VER" > "$ZFS_OVERLAY_ROOT/.wsl2-zfs/ZFS_VERSION"
+tar -C "$ZFS_OVERLAY_ROOT" -czf "$ZFS_MODULES_PATH" .
+
+find "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
+  fail "zfs kernel module was not installed into overlay module tree"
+
+depmod -b "$ZFS_MODROOT" "$KERNEL_RELEASE"
 
 log "Validating staged zfs module"
-ZFS_MODINFO=$(modinfo -b "$MERGED_MODROOT" -k "$KERNEL_RELEASE" zfs)
+ZFS_MODINFO=$(modinfo -b "$ZFS_MODROOT" -k "$KERNEL_RELEASE" zfs)
 printf '%s\n' "$ZFS_MODINFO"
 printf '%s\n' "$ZFS_MODINFO" | grep -E '^vermagic:' | grep -F "$KERNEL_RELEASE" >/dev/null ||
   fail "zfs module vermagic does not match $KERNEL_RELEASE"
@@ -125,14 +131,6 @@ mv "$ZFS_EXTRACTED_DIR" "$ZFS_PACKAGE_DIR"
   ./configure
   make -j1 native-deb-utils
 )
-
-log "Generating merged modules VHDX"
-SUDO_CMD=()
-if [[ "$(id -u)" -ne 0 ]]; then
-  SUDO_CMD=("${SUDO:-sudo}")
-fi
-"${SUDO_CMD[@]}" "$KERNEL_DIR/Microsoft/scripts/gen_modules_vhdx.sh" "$MERGED_MODROOT" "$KERNEL_RELEASE" "$VHDX_PATH"
-[[ -s "$VHDX_PATH" ]] || fail "modules VHDX was not created at $VHDX_PATH"
 
 log "Packaging kernel build metadata"
 BUILD_KIT_DIR="$WORK_DIR/build-kit"
@@ -153,14 +151,21 @@ log "Collecting OpenZFS Debian packages"
 while IFS= read -r -d '' deb; do
   deb_name=$(basename "$deb")
   case "$deb_name" in
-    *dkms*.deb|*dracut*.deb)
-      log "Skipping source/rebuild package $deb_name"
+    openzfs-libnvpair3_*.deb|openzfs-libuutil3_*.deb|openzfs-libzfs7_*.deb|openzfs-libzfsbootenv1_*.deb|openzfs-libzpool7_*.deb|openzfs-python3-pyzfs_*.deb|openzfs-zfs-zed_*.deb|openzfs-zfsutils_*.deb)
+      cp "$deb" "$ARTIFACT_DIR/"
       ;;
     *)
-      cp "$deb" "$ARTIFACT_DIR/"
+      log "Skipping non-runtime package $deb_name"
       ;;
   esac
 done < <(find "$WORK_DIR" -maxdepth 2 -type f -name '*.deb' -print0)
+
+log "Writing artifact manifest"
+(
+  cd "$ARTIFACT_DIR"
+  find . -maxdepth 1 -type f -printf '%s  %f\n' | sort -n > ARTIFACTS.txt
+  cat ARTIFACTS.txt
+)
 
 log "Writing checksums"
 (
@@ -173,7 +178,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'kernel_release=%s\n' "$KERNEL_RELEASE"
     printf 'artifact_base=%s\n' "$ARTIFACT_BASE"
     printf 'artifact_dir=%s\n' "$ARTIFACT_DIR"
-    printf 'modules_vhdx=%s\n' "$VHDX_PATH"
+    printf 'zfs_modules=%s\n' "$ZFS_MODULES_PATH"
   } >> "$GITHUB_OUTPUT"
 fi
 
