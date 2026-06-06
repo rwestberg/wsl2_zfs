@@ -53,7 +53,9 @@ reset_dir "$ARTIFACT_DIR"
 KERNEL_ARCHIVE="$WORK_DIR/wsl2-kernel.tar.gz"
 KERNEL_DIR="$WORK_DIR/WSL2-Linux-Kernel-linux-msft-wsl-${KERNEL_VER}"
 ZFS_ARCHIVE="$WORK_DIR/zfs.tar.gz"
-ZFS_DIR="$WORK_DIR/zfs-${ZFS_VER}"
+ZFS_EXTRACTED_DIR="$WORK_DIR/zfs-${ZFS_VER}"
+ZFS_MODULE_DIR="$WORK_DIR/zfs-${ZFS_VER}-modules"
+ZFS_PACKAGE_DIR="$WORK_DIR/zfs-${ZFS_VER}-packages"
 STOCK_MODROOT="$WORK_DIR/stock-modules"
 MERGED_MODROOT="$WORK_DIR/merged-modules"
 
@@ -83,16 +85,16 @@ make -C "$KERNEL_DIR" INSTALL_MOD_PATH="$STOCK_MODROOT" modules_install
 log "Fetching OpenZFS ${ZFS_VER}"
 curl -fL "https://github.com/openzfs/zfs/releases/download/zfs-${ZFS_VER}/zfs-${ZFS_VER}.tar.gz" -o "$ZFS_ARCHIVE"
 tar -xzf "$ZFS_ARCHIVE" -C "$WORK_DIR"
-[[ -d "$ZFS_DIR" ]] || fail "OpenZFS archive did not extract to $ZFS_DIR"
+[[ -d "$ZFS_EXTRACTED_DIR" ]] || fail "OpenZFS archive did not extract to $ZFS_EXTRACTED_DIR"
+mv "$ZFS_EXTRACTED_DIR" "$ZFS_MODULE_DIR"
 
-log "Building OpenZFS user-space Debian packages"
+log "Configuring OpenZFS kernel modules for ${KERNEL_RELEASE}"
 (
-  cd "$ZFS_DIR"
+  cd "$ZFS_MODULE_DIR"
   export KVERS="$KERNEL_RELEASE"
   export KSRC="$KERNEL_DIR"
   export KOBJ="$KERNEL_DIR"
-  ./configure
-  make -j1 native-deb-utils
+  ./configure --with-linux="$KERNEL_DIR" --with-linux-obj="$KERNEL_DIR"
 )
 
 log "Preparing merged stock module tree"
@@ -100,8 +102,8 @@ mkdir -p "$MERGED_MODROOT"
 cp -a "$STOCK_MODROOT"/. "$MERGED_MODROOT"/
 
 log "Building and installing OpenZFS kernel modules into merged tree"
-make -C "$ZFS_DIR/module" -j"$NPROC"
-make -C "$ZFS_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" install
+make -C "$ZFS_MODULE_DIR/module" -j"$NPROC"
+make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" install
 
 find "$MERGED_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
   fail "zfs kernel module was not installed into merged module tree"
@@ -113,6 +115,16 @@ ZFS_MODINFO=$(modinfo -b "$MERGED_MODROOT" -k "$KERNEL_RELEASE" zfs)
 printf '%s\n' "$ZFS_MODINFO"
 printf '%s\n' "$ZFS_MODINFO" | grep -E '^vermagic:' | grep -F "$KERNEL_RELEASE" >/dev/null ||
   fail "zfs module vermagic does not match $KERNEL_RELEASE"
+
+log "Building OpenZFS user-space Debian packages"
+tar -xzf "$ZFS_ARCHIVE" -C "$WORK_DIR"
+[[ -d "$ZFS_EXTRACTED_DIR" ]] || fail "OpenZFS package archive did not extract to $ZFS_EXTRACTED_DIR"
+mv "$ZFS_EXTRACTED_DIR" "$ZFS_PACKAGE_DIR"
+(
+  cd "$ZFS_PACKAGE_DIR"
+  ./configure
+  make -j1 native-deb-utils
+)
 
 log "Generating merged modules VHDX"
 SUDO_CMD=()
