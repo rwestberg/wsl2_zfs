@@ -85,29 +85,26 @@ curl -fL "https://github.com/openzfs/zfs/releases/download/zfs-${ZFS_VER}/zfs-${
 tar -xzf "$ZFS_ARCHIVE" -C "$WORK_DIR"
 [[ -d "$ZFS_DIR" ]] || fail "OpenZFS archive did not extract to $ZFS_DIR"
 
-log "Building OpenZFS native Debian packages for ${KERNEL_RELEASE}"
+log "Building OpenZFS user-space Debian packages"
 (
   cd "$ZFS_DIR"
   export KVERS="$KERNEL_RELEASE"
   export KSRC="$KERNEL_DIR"
   export KOBJ="$KERNEL_DIR"
   ./configure
-  make -j1 native-deb-utils native-deb-kmod
+  make -j1 native-deb-utils
 )
 
-log "Merging OpenZFS kernel modules into stock module tree"
+log "Preparing merged stock module tree"
 mkdir -p "$MERGED_MODROOT"
 cp -a "$STOCK_MODROOT"/. "$MERGED_MODROOT"/
 
-found_kmod_package=0
-while IFS= read -r -d '' deb; do
-  if dpkg-deb -c "$deb" | grep -q '/lib/modules/'; then
-    found_kmod_package=1
-    dpkg-deb -x "$deb" "$MERGED_MODROOT"
-  fi
-done < <(find "$WORK_DIR" -maxdepth 2 -type f -name '*.deb' -print0)
+log "Building and installing OpenZFS kernel modules into merged tree"
+make -C "$ZFS_DIR/module" -j"$NPROC"
+make -C "$ZFS_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" install
 
-[[ "$found_kmod_package" -eq 1 ]] || fail "no OpenZFS kmod package with /lib/modules content was produced"
+find "$MERGED_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
+  fail "zfs kernel module was not installed into merged module tree"
 
 depmod -b "$MERGED_MODROOT" "$KERNEL_RELEASE"
 

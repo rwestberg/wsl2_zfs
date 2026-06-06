@@ -7,7 +7,7 @@ This repository builds OpenZFS for modern WSL2 without replacing the Microsoft W
 - Store-delivered WSL new enough to support `[wsl2] kernelModules`.
 - x86_64 WSL kernel. ARM64 is not built yet.
 - A release artifact matching the exact WSL kernel shown by `uname -r`.
-- OpenZFS `.deb` packages from the same workflow run as the `modules.vhdx`.
+- OpenZFS user-space `.deb` packages from the same workflow run as the `modules.vhdx`.
 
 Check the running kernel inside WSL:
 
@@ -31,7 +31,7 @@ Inputs:
 The workflow produces:
 
 - `wsl2-zfs-<kernel-release>-openzfs-<zfs-version>.modules.vhdx`
-- OpenZFS `.deb` packages, excluding DKMS and dracut rebuild packages
+- OpenZFS user-space `.deb` packages
 - `wsl2-zfs-<kernel-release>-openzfs-<zfs-version>.build-kit.tar.gz`
 - `SHA256SUMS`
 
@@ -45,7 +45,7 @@ On Windows, install the module VHDX:
 
 The installer copies the VHDX to `C:\WSL\wsl2_zfs\modules.vhdx`, backs up `%UserProfile%\.wslconfig` when it exists, updates only the `[wsl2] kernelModules` key, and runs `wsl --shutdown`.
 
-Inside each WSL distro that should use ZFS, install the matching packages from the same artifact:
+Inside each WSL distro that should use ZFS, install the matching user-space packages from the same artifact:
 
 ```bash
 sudo apt install ./*.deb
