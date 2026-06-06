@@ -30,7 +30,6 @@ jobs:
       KERNEL_VER: ${{ inputs.kernel_ver }}
       ZFS_VER: ${{ inputs.zfs_ver }}
       ARTIFACT_DIR: ${{ github.workspace }}/artifacts
-      WORK_DIR: ${{ runner.temp }}/wsl2-zfs-build
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -50,6 +49,8 @@ jobs:
 
       - name: Build merged modules VHDX
         id: build
+        env:
+          WORK_DIR: ${{ runner.temp }}/wsl2-zfs-build
         run: bash scripts/build-modules-vhdx.sh
 
       - name: Upload build artifacts
