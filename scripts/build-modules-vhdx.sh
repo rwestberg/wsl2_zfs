@@ -103,7 +103,7 @@ cp -a "$STOCK_MODROOT"/. "$MERGED_MODROOT"/
 
 log "Building and installing OpenZFS kernel modules into merged tree"
 make -C "$ZFS_MODULE_DIR/module" -j"$NPROC"
-make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" install
+make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$MERGED_MODROOT" modules_install
 
 find "$MERGED_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
   fail "zfs kernel module was not installed into merged module tree"
