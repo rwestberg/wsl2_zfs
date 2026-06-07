@@ -53,23 +53,12 @@ jobs:
           WORK_DIR: ${{ runner.temp }}/wsl2-zfs-build
         run: bash scripts/build-zfs-overlay.sh
 
-      - name: Upload ZFS module overlay
+      - name: Upload install bundle
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ steps.build.outputs.artifact_base }}-zfs-module-overlay
+          name: ${{ steps.build.outputs.artifact_base }}
           path: |
             artifacts/*.zfs-modules.tar.gz
-            artifacts/ARTIFACTS.txt
-            artifacts/SHA256SUMS
-          if-no-files-found: error
-          overwrite: true
-          compression-level: 0
-
-      - name: Upload runtime Debian packages
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ steps.build.outputs.artifact_base }}-runtime-debs
-          path: |
             artifacts/*.deb
             artifacts/ARTIFACTS.txt
             artifacts/SHA256SUMS
@@ -84,8 +73,7 @@ jobs:
         run: |
           mkdir -p release-assets
           cd artifacts
-          zip -0 "../release-assets/${ARTIFACT_BASE}-zfs-module-overlay.zip" *.zfs-modules.tar.gz ARTIFACTS.txt SHA256SUMS
-          zip -0 "../release-assets/${ARTIFACT_BASE}-runtime-debs.zip" *.deb ARTIFACTS.txt SHA256SUMS
+          zip -0 "../release-assets/${ARTIFACT_BASE}.zip" *.zfs-modules.tar.gz *.deb ARTIFACTS.txt SHA256SUMS
 
       - name: Publish GitHub release
         if: ${{ inputs.publish_release }}

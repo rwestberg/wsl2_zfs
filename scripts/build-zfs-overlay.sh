@@ -118,30 +118,39 @@ mv "$ZFS_EXTRACTED_DIR" "$ZFS_PACKAGE_DIR"
 )
 
 log "Collecting OpenZFS Debian packages"
+RUNTIME_DEBS=()
 while IFS= read -r -d '' deb; do
   deb_name=$(basename "$deb")
   case "$deb_name" in
     openzfs-libnvpair3_*.deb|openzfs-libuutil3_*.deb|openzfs-libzfs7_*.deb|openzfs-libzfsbootenv1_*.deb|openzfs-libzpool7_*.deb|openzfs-python3-pyzfs_*.deb|openzfs-zfs-zed_*.deb|openzfs-zfsutils_*.deb)
       cp "$deb" "$ARTIFACT_DIR/"
+      RUNTIME_DEBS+=("$deb_name")
       ;;
     *)
       log "Skipping non-runtime package $deb_name"
       ;;
   esac
 done < <(find "$WORK_DIR" -maxdepth 2 -type f -name '*.deb' -print0)
+(( ${#RUNTIME_DEBS[@]} > 0 )) || fail "no OpenZFS runtime Debian packages were collected"
 
-log "Writing artifact manifest"
-(
-  cd "$ARTIFACT_DIR"
-  find . -maxdepth 1 -type f ! -name ARTIFACTS.txt ! -name SHA256SUMS -printf '%s  %f\n' | sort -n > ARTIFACTS.txt
-  cat ARTIFACTS.txt
-)
+write_artifact_index() {
+  local manifest="ARTIFACTS.txt"
+  local sums="SHA256SUMS"
 
-log "Writing checksums"
-(
-  cd "$ARTIFACT_DIR"
-  sha256sum ./* > SHA256SUMS
-)
+  log "Writing artifact manifest and checksums"
+  (
+    cd "$ARTIFACT_DIR"
+    : > "$manifest"
+    for artifact in "$@"; do
+      [[ -f "$artifact" ]] || fail "missing artifact: $artifact"
+      printf '%s  %s\n' "$(stat -c '%s' "$artifact")" "$artifact"
+    done | sort -n > "$manifest"
+    cat "$manifest"
+    sha256sum "$@" > "$sums"
+  )
+}
+
+write_artifact_index "$(basename "$ZFS_MODULES_PATH")" "${RUNTIME_DEBS[@]}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
