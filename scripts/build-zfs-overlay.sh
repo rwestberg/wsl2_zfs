@@ -14,16 +14,6 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
-copy_if_exists() {
-  local source=$1
-  local destination=$2
-
-  if [[ -e "$source" ]]; then
-    mkdir -p "$destination"
-    cp -a "$source" "$destination/"
-  fi
-}
-
 KERNEL_VER=${KERNEL_VER:?KERNEL_VER must be set, for example 6.18.26.1}
 ZFS_VER=${ZFS_VER:?ZFS_VER must be set, for example 2.4.2}
 ROOT_DIR=${ROOT_DIR:-"$PWD"}
@@ -32,7 +22,6 @@ ARTIFACT_DIR=${ARTIFACT_DIR:-"$ROOT_DIR/artifacts"}
 NPROC=${NPROC:-$(nproc)}
 
 require_command curl
-require_command depmod
 require_command dpkg-deb
 require_command make
 require_command modinfo
@@ -77,7 +66,6 @@ KERNEL_RELEASE=$(make -C "$KERNEL_DIR" -s KCONFIG_CONFIG=Microsoft/config-wsl ke
 [[ -n "$KERNEL_RELEASE" ]] || fail "could not determine kernel release"
 ARTIFACT_BASE="wsl2-zfs-${KERNEL_RELEASE}-openzfs-${ZFS_VER}"
 ZFS_MODULES_PATH="$ARTIFACT_DIR/${ARTIFACT_BASE}.zfs-modules.tar.gz"
-BUILD_KIT_PATH="$ARTIFACT_DIR/${ARTIFACT_BASE}.build-kit.tar.gz"
 
 log "Fetching OpenZFS ${ZFS_VER}"
 curl -fL "https://github.com/openzfs/zfs/releases/download/zfs-${ZFS_VER}/zfs-${ZFS_VER}.tar.gz" -o "$ZFS_ARCHIVE"
@@ -98,9 +86,11 @@ log "Building OpenZFS kernel modules"
 make -C "$ZFS_MODULE_DIR/module" -j"$NPROC"
 
 log "Installing OpenZFS kernel modules into overlay tree"
-make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$ZFS_MODROOT" INSTALL_MOD_STRIP=1 modules_install
+make -C "$ZFS_MODULE_DIR/module" INSTALL_MOD_PATH="$ZFS_MODROOT" INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
 [[ -d "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE" ]] ||
   fail "zfs module install did not create $ZFS_MODROOT/lib/modules/$KERNEL_RELEASE"
+ZFS_KO=$(find "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit)
+[[ -n "$ZFS_KO" ]] || fail "zfs kernel module was not installed into overlay module tree"
 
 log "Packaging OpenZFS module overlay"
 mkdir -p "$ZFS_OVERLAY_ROOT/.wsl2-zfs"
@@ -111,13 +101,8 @@ printf '%s\n' "$KERNEL_RELEASE" > "$ZFS_OVERLAY_ROOT/.wsl2-zfs/KERNEL_RELEASE"
 printf '%s\n' "$ZFS_VER" > "$ZFS_OVERLAY_ROOT/.wsl2-zfs/ZFS_VERSION"
 tar -C "$ZFS_OVERLAY_ROOT" -czf "$ZFS_MODULES_PATH" .
 
-find "$ZFS_MODROOT/lib/modules/$KERNEL_RELEASE" -type f -name 'zfs.ko*' -print -quit | grep -q . ||
-  fail "zfs kernel module was not installed into overlay module tree"
-
-depmod -b "$ZFS_MODROOT" "$KERNEL_RELEASE"
-
 log "Validating staged zfs module"
-ZFS_MODINFO=$(modinfo -b "$ZFS_MODROOT" -k "$KERNEL_RELEASE" zfs)
+ZFS_MODINFO=$(modinfo "$ZFS_KO")
 printf '%s\n' "$ZFS_MODINFO"
 printf '%s\n' "$ZFS_MODINFO" | grep -E '^vermagic:' | grep -F "$KERNEL_RELEASE" >/dev/null ||
   fail "zfs module vermagic does not match $KERNEL_RELEASE"
@@ -131,21 +116,6 @@ mv "$ZFS_EXTRACTED_DIR" "$ZFS_PACKAGE_DIR"
   ./configure
   make -j1 native-deb-utils
 )
-
-log "Packaging kernel build metadata"
-BUILD_KIT_DIR="$WORK_DIR/build-kit"
-mkdir -p "$BUILD_KIT_DIR"
-copy_if_exists "$KERNEL_DIR/Module.symvers" "$BUILD_KIT_DIR"
-copy_if_exists "$KERNEL_DIR/.config" "$BUILD_KIT_DIR"
-copy_if_exists "$KERNEL_DIR/Makefile" "$BUILD_KIT_DIR"
-copy_if_exists "$KERNEL_DIR/Kbuild" "$BUILD_KIT_DIR"
-copy_if_exists "$KERNEL_DIR/include/config" "$BUILD_KIT_DIR/include"
-copy_if_exists "$KERNEL_DIR/include/generated" "$BUILD_KIT_DIR/include"
-copy_if_exists "$KERNEL_DIR/arch/x86/include/generated" "$BUILD_KIT_DIR/arch/x86/include"
-copy_if_exists "$KERNEL_DIR/scripts/basic" "$BUILD_KIT_DIR/scripts"
-copy_if_exists "$KERNEL_DIR/scripts/mod" "$BUILD_KIT_DIR/scripts"
-copy_if_exists "$KERNEL_DIR/scripts/module.lds" "$BUILD_KIT_DIR/scripts"
-tar -C "$BUILD_KIT_DIR" -czf "$BUILD_KIT_PATH" .
 
 log "Collecting OpenZFS Debian packages"
 while IFS= read -r -d '' deb; do
@@ -163,7 +133,7 @@ done < <(find "$WORK_DIR" -maxdepth 2 -type f -name '*.deb' -print0)
 log "Writing artifact manifest"
 (
   cd "$ARTIFACT_DIR"
-  find . -maxdepth 1 -type f -printf '%s  %f\n' | sort -n > ARTIFACTS.txt
+  find . -maxdepth 1 -type f ! -name ARTIFACTS.txt ! -name SHA256SUMS -printf '%s  %f\n' | sort -n > ARTIFACTS.txt
   cat ARTIFACTS.txt
 )
 

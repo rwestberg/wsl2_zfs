@@ -34,8 +34,7 @@ The workflow produces:
 
 - `<artifact-base>-zfs-module-overlay`: the ZFS kernel module overlay.
 - `<artifact-base>-runtime-debs`: the OpenZFS runtime `.deb` packages needed inside a WSL distro.
-- `<artifact-base>-build-kit`: kernel build metadata for maintainers and advanced local rebuilds.
-- `ARTIFACTS.txt` and `SHA256SUMS` in the package/build-kit artifacts.
+- `ARTIFACTS.txt` and `SHA256SUMS` in each artifact.
 
 When `publish_release=true`, the release contains the same groups as zip files.
 

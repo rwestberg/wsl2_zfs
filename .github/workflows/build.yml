@@ -32,7 +32,7 @@ jobs:
       ARTIFACT_DIR: ${{ github.workspace }}/artifacts
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install build dependencies
         run: |
@@ -54,7 +54,7 @@ jobs:
         run: bash scripts/build-zfs-overlay.sh
 
       - name: Upload ZFS module overlay
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.build.outputs.artifact_base }}-zfs-module-overlay
           path: |
@@ -66,23 +66,11 @@ jobs:
           compression-level: 0
 
       - name: Upload runtime Debian packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.build.outputs.artifact_base }}-runtime-debs
           path: |
             artifacts/*.deb
-            artifacts/ARTIFACTS.txt
-            artifacts/SHA256SUMS
-          if-no-files-found: error
-          overwrite: true
-          compression-level: 0
-
-      - name: Upload kernel build kit
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.build.outputs.artifact_base }}-build-kit
-          path: |
-            artifacts/*.build-kit.tar.gz
             artifacts/ARTIFACTS.txt
             artifacts/SHA256SUMS
           if-no-files-found: error
@@ -98,11 +86,10 @@ jobs:
           cd artifacts
           zip -0 "../release-assets/${ARTIFACT_BASE}-zfs-module-overlay.zip" *.zfs-modules.tar.gz ARTIFACTS.txt SHA256SUMS
           zip -0 "../release-assets/${ARTIFACT_BASE}-runtime-debs.zip" *.deb ARTIFACTS.txt SHA256SUMS
-          zip -0 "../release-assets/${ARTIFACT_BASE}-build-kit.zip" *.build-kit.tar.gz ARTIFACTS.txt SHA256SUMS
 
       - name: Publish GitHub release
         if: ${{ inputs.publish_release }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.build.outputs.artifact_base }}
           name: ${{ steps.build.outputs.artifact_base }}
