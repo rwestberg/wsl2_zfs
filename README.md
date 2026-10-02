@@ -64,7 +64,7 @@ The `zfs --version` output should report the same OpenZFS version for both user 
 
 ## Runtime Validation
 
-Run `pwsh -NoProfile -File tests/test-installer.ps1` to check stock image selection, Bash syntax, and merge behavior for both current and legacy layouts. On Windows, this check uses Git for Windows Bash; override it with `-BashPath <path>` if needed. Disk and kmod commands are simulated, so this check does not mount, format, or alter WSL disks. The build workflow runs the same check before compilation.
+Run `pwsh -NoProfile -File tests/test-installer.ps1` to check stock image selection, Bash syntax, merge behavior for both current and legacy layouts, VHD rollback after installation failures, and propagation of container build failures. On Windows, this check uses Git for Windows Bash; override it with `-BashPath <path>` if needed. Disk, kmod, ACL, and build commands are simulated; file replacement checks use temporary fixtures. The build workflow runs the same check before compilation.
 
 After installing the bundle on a Windows WSL2 machine, validate manually:
 

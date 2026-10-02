@@ -797,7 +797,10 @@ sync
         Move-Item -LiteralPath $modulesBuildPath -Destination $destinationPath -Force
         Reset-FileAcl -Path $destinationPath
     } catch {
-        if ($destinationBackupPath -and -not (Test-Path -LiteralPath $destinationPath -PathType Leaf) -and (Test-Path -LiteralPath $destinationBackupPath -PathType Leaf)) {
+        if (Test-Path -LiteralPath $destinationPath -PathType Leaf) {
+            Remove-Item -LiteralPath $destinationPath -Force
+        }
+        if ($destinationBackupPath -and (Test-Path -LiteralPath $destinationBackupPath -PathType Leaf)) {
             Move-Item -LiteralPath $destinationBackupPath -Destination $destinationPath -Force
         }
         throw

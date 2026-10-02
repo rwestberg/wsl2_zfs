@@ -57,6 +57,7 @@ jobs:
             --env HOST_GID="$(id -g)" \
             "$RUNTIME_IMAGE" \
             bash -lc '
+              set -euo pipefail
               apt-get update
               apt-get install -y \
                 alien autoconf automake bc bison build-essential ca-certificates curl \
