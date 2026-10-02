@@ -9,17 +9,17 @@ This repository builds OpenZFS install bundles for stock WSL2 kernels. Each bund
 - x86_64 WSL kernel.
 - Administrator access on Windows. The installer uses `wsl --mount` to edit a copied modules VHD.
 - An installed WSL distro with `depmod`, `modinfo`, and `mkfs.ext4` available.
-- A Debian/Ubuntu-style WSL distro with `apt-get` when using `-InstallDebs`.
+- A Debian 12/bookworm-compatible WSL distro with `apt-get` when using `-InstallDebs`.
 - A release artifact matching the exact WSL kernel shown by `uname -r`.
 
 Check the running kernel inside WSL:
 
 ```bash
 uname -r
-# Example: 6.18.26.1-microsoft-standard-WSL2
+# Example: 6.18.40.1-microsoft-standard-WSL2
 ```
 
-For that example, run the build workflow with `kernel_ver=6.18.26.1`. ZFS modules built for another kernel release will not load reliably.
+For that example, run the build workflow with `kernel_ver=6.18.40.1`. ZFS modules built for another kernel release will not load reliably. The `-1` suffix shown by `wsl --version` is a WSL kernel package revision; use `uname -r` to select the matching kernel source release.
 
 ## Build
 
@@ -27,7 +27,7 @@ Run the `Build` workflow manually.
 
 Inputs:
 
-- `kernel_ver`: exact WSL kernel version suffix, default `6.18.26.1`.
+- `kernel_ver`: exact WSL kernel version suffix, default `6.18.40.1`.
 - `zfs_ver`: OpenZFS release, default `2.4.2`.
 - `publish_release`: when true, publish a GitHub release named after the generated artifact.
 
@@ -37,15 +37,19 @@ The workflow produces:
 
 When `publish_release=true`, the release contains the same bundle as a zip file.
 
+The runtime `.deb` packages are built in a Debian 12 container. For other distro releases, install the module VHDX with this script and handle user-space packages separately.
+
 ## Install
 
 Run the Windows installer from an elevated PowerShell session:
 
 ```powershell
-.\scripts\install-wsl2-zfs.ps1 -InstallBundle .\wsl2-zfs-6.18.26.1-microsoft-standard-WSL2-openzfs-2.4.2.zip -Distro Debian -InstallDebs
+.\scripts\install-wsl2-zfs.ps1 -InstallBundle .\wsl2-zfs-6.18.40.1-microsoft-standard-WSL2-openzfs-2.4.2.zip -Distro Debian -InstallDebs
 ```
 
-The installer creates `C:\Program Files\WSL\tools\modules_zfs-2.4.2.vhdx` by default. It copies Microsoft’s stock module tree from `C:\Program Files\WSL\tools\modules.vhd`, merges the ZFS modules, runs `depmod`, backs up `%UserProfile%\.wslconfig`, updates only the `[wsl2] kernel` and `kernelModules` keys, and runs `wsl --shutdown`. Use `-DestinationDirectory` to place the generated VHDX somewhere else.
+The installer creates `C:\Program Files\WSL\tools\modules_zfs-2.4.2.vhdx` by default. It automatically selects `artifacts.vhd` beside the kernel, falling back to `modules.vhd` for older WSL installations. Use `-StockModulesVhd` to select a stock image explicitly. For the new artifacts layout, it preserves the entire image tree, including `<kernel-release>/linux-headers` and `<kernel-release>/perf`, and merges ZFS into `<kernel-release>/modules`. Older module trees remain supported.
+
+The installer runs `depmod`, backs up `%UserProfile%\.wslconfig`, updates only the `[wsl2] kernel` and `kernelModules` keys, and runs `wsl --shutdown`. Use `-DestinationDirectory` to place the generated VHDX somewhere else. After a WSL kernel update, build and install a new bundle for the updated `uname -r`; the existing generated VHDX does not update automatically.
 
 With `-InstallDebs`, the installer also installs the bundled runtime `.deb` packages into the selected WSL distro. Use `-Distro <name>` to pick the distro; otherwise the default WSL distro is used. For manual distro package installs, extract the same bundle and run:
 
@@ -59,6 +63,8 @@ zfs --version
 The `zfs --version` output should report the same OpenZFS version for both user space and `zfs-kmod`. If the first line still shows a distro package version, install the runtime debs from the same install bundle.
 
 ## Runtime Validation
+
+Run `pwsh -NoProfile -File tests/test-installer.ps1` to check stock image selection, Bash syntax, merge behavior for both current and legacy layouts, VHD rollback after installation failures, and propagation of container build failures. On Windows, this check uses Git for Windows Bash; override it with `-BashPath <path>` if needed. Disk, kmod, ACL, and build commands are simulated; file replacement checks use temporary fixtures. The build workflow runs the same check before compilation.
 
 After installing the bundle on a Windows WSL2 machine, validate manually:
 
