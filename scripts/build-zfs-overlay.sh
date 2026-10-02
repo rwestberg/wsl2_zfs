@@ -14,7 +14,7 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
-KERNEL_VER=${KERNEL_VER:?KERNEL_VER must be set, for example 6.18.26.1}
+KERNEL_VER=${KERNEL_VER:?KERNEL_VER must be set, for example 6.18.40.1}
 ZFS_VER=${ZFS_VER:?ZFS_VER must be set, for example 2.4.2}
 ROOT_DIR=${ROOT_DIR:-"$PWD"}
 WORK_DIR=${WORK_DIR:-"$ROOT_DIR/build"}
@@ -122,7 +122,7 @@ RUNTIME_DEBS=()
 while IFS= read -r -d '' deb; do
   deb_name=$(basename "$deb")
   case "$deb_name" in
-    openzfs-libnvpair3_*.deb|openzfs-libuutil3_*.deb|openzfs-libzfs7_*.deb|openzfs-libzfsbootenv1_*.deb|openzfs-libzpool7_*.deb|openzfs-python3-pyzfs_*.deb|openzfs-zfs-zed_*.deb|openzfs-zfsutils_*.deb)
+    openzfs-libnvpair3_*.deb|openzfs-libuutil3_*.deb|openzfs-libzfs7_*.deb|openzfs-libzfsbootenv1_*.deb|openzfs-libzpool7_*.deb|openzfs-python3-pyzfs_*.deb|openzfs-zfsutils_*.deb)
       cp "$deb" "$ARTIFACT_DIR/"
       RUNTIME_DEBS+=("$deb_name")
       ;;

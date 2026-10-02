@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_ver:
-        description: Exact WSL kernel version suffix, for example 6.18.26.1
+        description: Exact WSL kernel version suffix, for example 6.18.40.1
         required: true
         type: string
-        default: '6.18.26.1'
+        default: '6.18.40.1'
       zfs_ver:
         description: OpenZFS release
         required: true
@@ -30,28 +30,46 @@ jobs:
       KERNEL_VER: ${{ inputs.kernel_ver }}
       ZFS_VER: ${{ inputs.zfs_ver }}
       ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+      RUNTIME_IMAGE: debian:12
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            alien autoconf automake bc bison build-essential ca-certificates curl \
-            debhelper-compat dh-autoreconf dh-dkms dh-python dkms dwarves \
-            fakeroot flex gawk git kmod libaio-dev libattr1-dev libblkid-dev \
-            libcurl4-openssl-dev libelf-dev libffi-dev libpam0g-dev libssl-dev \
-            libtirpc-dev libtool libudev-dev libunwind-dev ncompress parallel \
-            po-debconf python3 python3-all-dev python3-cffi python3-dev \
-            python3-packaging python3-setuptools python3-sphinx uuid-dev \
-            xz-utils zip zlib1g-dev
+      - name: Validate installer compatibility
+        run: pwsh -NoProfile -File tests/test-installer.ps1
 
       - name: Build ZFS module overlay
         id: build
         env:
           WORK_DIR: ${{ runner.temp }}/wsl2-zfs-build
-        run: bash scripts/build-zfs-overlay.sh
+        run: |
+          docker run --rm \
+            --volume "${{ github.workspace }}:/workspace" \
+            --volume "${{ runner.temp }}:${{ runner.temp }}" \
+            --workdir /workspace \
+            --env DEBIAN_FRONTEND=noninteractive \
+            --env KERNEL_VER \
+            --env ZFS_VER \
+            --env WORK_DIR \
+            --env ARTIFACT_DIR=/workspace/artifacts \
+            --env GITHUB_OUTPUT \
+            --env HOST_UID="$(id -u)" \
+            --env HOST_GID="$(id -g)" \
+            "$RUNTIME_IMAGE" \
+            bash -lc '
+              apt-get update
+              apt-get install -y \
+                alien autoconf automake bc bison build-essential ca-certificates curl \
+                debhelper-compat dh-autoreconf dh-dkms dh-python dkms dwarves \
+                fakeroot flex gawk git kmod libaio-dev libattr1-dev libblkid-dev \
+                libcurl4-openssl-dev libelf-dev libffi-dev libpam0g-dev libssl-dev \
+                libtirpc-dev libtool libudev-dev libunwind-dev ncompress parallel \
+                po-debconf python3 python3-all-dev python3-cffi python3-dev \
+                python3-packaging python3-setuptools python3-sphinx uuid-dev \
+                xz-utils zip zlib1g-dev
+              bash scripts/build-zfs-overlay.sh
+              chown -R "$HOST_UID:$HOST_GID" /workspace/artifacts
+            '
 
       - name: Upload install bundle
         uses: actions/upload-artifact@v6

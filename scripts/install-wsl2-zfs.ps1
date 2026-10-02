@@ -7,7 +7,7 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string] $StockModulesVhd = 'C:\Program Files\WSL\tools\modules.vhd',
+    [string] $StockModulesVhd,
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
@@ -69,6 +69,33 @@ function Get-WslPrefix {
     return @()
 }
 
+function Resolve-StockModulesVhd {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $KernelPath,
+
+        [Parameter()]
+        [string] $StockModulesVhd
+    )
+
+    if ($StockModulesVhd) {
+        if (-not (Test-Path -LiteralPath $StockModulesVhd -PathType Leaf)) {
+            throw "Stock WSL modules VHD does not exist: $StockModulesVhd"
+        }
+        return (Resolve-Path -LiteralPath $StockModulesVhd).Path
+    }
+
+    $toolsDirectory = Split-Path -Path (Resolve-Path -LiteralPath $KernelPath).Path -Parent
+    foreach ($fileName in @('artifacts.vhd', 'modules.vhd')) {
+        $candidate = Join-Path $toolsDirectory $fileName
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "Could not find artifacts.vhd or modules.vhd beside the WSL kernel in $toolsDirectory. Specify -StockModulesVhd explicitly."
+}
+
 function Invoke-WslCapture {
     param(
         [Parameter(Mandatory = $true)]
@@ -113,6 +140,21 @@ function New-EmptyVhd {
             Remove-Item -LiteralPath $scriptPath -Force
         }
     }
+}
+
+function Reset-FileAcl {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    $icacls = Get-Command icacls.exe -ErrorAction SilentlyContinue
+    if (-not $icacls) {
+        Write-Warning "icacls.exe is not available; generated modules VHD ACLs were not reset."
+        return
+    }
+
+    Invoke-CheckedCommand -FilePath $icacls.Source -Arguments @($Path, '/reset')
 }
 
 function ConvertTo-WslPath {
@@ -370,6 +412,7 @@ function Expand-ZfsModules {
         $tarball = $candidates[0].FullName
         $runtimeDebs = @(
             Get-ChildItem -LiteralPath $packageDirectory -Recurse -File -Filter '*.deb' |
+                Where-Object { $_.Name -notlike 'openzfs-zfs-zed_*.deb' } |
                 Sort-Object -Property Name |
                 ForEach-Object { $_.FullName }
         )
@@ -445,7 +488,11 @@ if [ "${#debs[@]}" -eq 0 ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y "${debs[@]}"
+if ! apt-get install -y --no-install-recommends "${debs[@]}"; then
+  echo "OpenZFS runtime package installation failed." >&2
+  echo "The bundled .deb packages must match the selected WSL distro release." >&2
+  exit 1
+fi
 modprobe zfs
 zfs --version
 '@
@@ -470,15 +517,12 @@ if (-not (Test-Path -LiteralPath $ZfsModules -PathType Leaf)) {
     throw "Install artifact does not exist: $ZfsModules"
 }
 
-if (-not (Test-Path -LiteralPath $StockModulesVhd -PathType Leaf)) {
-    throw "Stock WSL modules VHD does not exist: $StockModulesVhd"
-}
-
-$resolvedStockModulesVhd = (Resolve-Path -LiteralPath $StockModulesVhd).Path
-
 if (-not (Test-Path -LiteralPath $KernelPath -PathType Leaf)) {
     throw "Stock WSL kernel does not exist: $KernelPath"
 }
+
+$resolvedStockModulesVhd = Resolve-StockModulesVhd -KernelPath $KernelPath -StockModulesVhd $StockModulesVhd
+Write-Host "Using stock WSL image $resolvedStockModulesVhd"
 
 Repair-WslKernelForExistingModules -KernelPath $KernelPath
 
@@ -486,6 +530,8 @@ $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) "wsl2-zfs-overlay-$([Sys
 $stockMountPath = Join-Path $workRoot 'stock-modules.vhd'
 $stockMounted = $false
 $destinationMounted = $false
+$destinationPath = $null
+$modulesBuildPath = $null
 
 try {
     Write-Step "Preparing temporary workspace"
@@ -514,16 +560,10 @@ try {
     $destinationFileName = "modules_zfs-$safeZfsVersion.vhdx"
     New-Item -ItemType Directory -Force -Path $DestinationDirectory | Out-Null
     $destinationPath = Join-Path $DestinationDirectory $destinationFileName
-    if (Test-Path -LiteralPath $destinationPath -PathType Leaf) {
-        $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-        $destinationBackupPath = "$destinationPath.wsl2-zfs.$timestamp.bak"
-        Copy-Item -LiteralPath $destinationPath -Destination $destinationBackupPath -Force
-        Write-Host "Backed up existing modules VHD to $destinationBackupPath"
-        Remove-Item -LiteralPath $destinationPath -Force
-    }
+    $modulesBuildPath = Join-Path $workRoot $destinationFileName
 
-    New-EmptyVhd -Path $destinationPath -SizeBytes $ModulesVhdSizeBytes
-    Set-ItemProperty -LiteralPath $destinationPath -Name IsReadOnly -Value $false
+    New-EmptyVhd -Path $modulesBuildPath -SizeBytes $ModulesVhdSizeBytes
+    Set-ItemProperty -LiteralPath $modulesBuildPath -Name IsReadOnly -Value $false
 
     Write-Step "Shutting down WSL before mounting modules VHD"
     Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--shutdown')
@@ -548,7 +588,7 @@ try {
     Write-Host "Attached stock modules VHD as: $($stockBlockDevices -join ', ')"
 
     Write-Step "Attaching writable modules VHD"
-    Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--mount', $destinationPath, '--vhd', '--bare')
+    Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--mount', $modulesBuildPath, '--vhd', '--bare')
     $destinationMounted = $true
 
     Start-Sleep -Seconds 1
@@ -624,7 +664,11 @@ for candidate in "${stock_devices[@]}"; do
   device="/dev/$candidate"
   if mount -o ro "$device" "$stock_mount" 2>/dev/null; then
     stock_module_root="$stock_mount"
-    if [ -d "$stock_mount/lib/modules/$kernel_release" ]; then
+    stock_artifacts_layout=0
+    if [ -d "$stock_mount/$kernel_release/modules" ]; then
+      stock_module_root="$stock_mount/$kernel_release/modules"
+      stock_artifacts_layout=1
+    elif [ -d "$stock_mount/lib/modules/$kernel_release" ]; then
       stock_module_root="$stock_mount/lib/modules/$kernel_release"
     fi
 
@@ -661,14 +705,20 @@ echo "Using stock module tree: $stock_module_root"
 
 destination_module_root="$destination_mount"
 
+if [ "$stock_artifacts_layout" -eq 1 ]; then
+  echo "Copying stock artifacts into writable VHD, including headers and perf"
+  cp -a "$stock_mount"/. "$destination_mount"/
+  destination_module_root="$destination_mount/$kernel_release/modules"
+else
+  echo "Copying stock modules into writable VHD"
+  cp -a "$stock_module_root"/. "$destination_module_root"/
+fi
+
 if ! touch "$destination_module_root/.wsl2-zfs-write-test" 2>/dev/null; then
   echo "writable modules VHD is read-only after formatting: $destination_module_root" >&2
   exit 1
 fi
 rm -f "$destination_module_root/.wsl2-zfs-write-test"
-
-echo "Copying stock modules into writable VHD"
-cp -a "$stock_module_root"/. "$destination_module_root"/
 
 src="$overlay_dir"
 if [ -d "$overlay_dir/lib/modules/$kernel_release" ]; then
@@ -726,10 +776,32 @@ sync
     Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments $mergeArguments
 
     Write-Step "Unmounting modules VHD"
-    Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--unmount', $destinationPath)
+    Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--unmount', $modulesBuildPath)
     $destinationMounted = $false
     Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--unmount', $stockMountPath)
     $stockMounted = $false
+
+    Write-Step "Shutting down WSL before replacing modules VHD"
+    Invoke-CheckedCommand -FilePath 'wsl.exe' -Arguments @('--shutdown')
+
+    Write-Step "Installing generated modules VHD"
+    $destinationBackupPath = $null
+    if (Test-Path -LiteralPath $destinationPath -PathType Leaf) {
+        $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+        $destinationBackupPath = "$destinationPath.wsl2-zfs.$timestamp.bak"
+        Move-Item -LiteralPath $destinationPath -Destination $destinationBackupPath -Force
+        Write-Host "Backed up existing modules VHD to $destinationBackupPath"
+    }
+
+    try {
+        Move-Item -LiteralPath $modulesBuildPath -Destination $destinationPath -Force
+        Reset-FileAcl -Path $destinationPath
+    } catch {
+        if ($destinationBackupPath -and -not (Test-Path -LiteralPath $destinationPath -PathType Leaf) -and (Test-Path -LiteralPath $destinationBackupPath -PathType Leaf)) {
+            Move-Item -LiteralPath $destinationBackupPath -Destination $destinationPath -Force
+        }
+        throw
+    }
 
     Write-Step "Updating WSL configuration"
     Set-WslKernelConfiguration -KernelPath $KernelPath -ModulesPath $destinationPath
@@ -749,7 +821,7 @@ sync
     Write-Host "Installed merged WSL kernel modules VHD at $destinationPath"
 } finally {
     if ($destinationMounted) {
-        & wsl.exe --unmount $destinationPath | Out-Null
+        & wsl.exe --unmount $modulesBuildPath | Out-Null
     }
     if ($stockMounted) {
         & wsl.exe --unmount $stockMountPath | Out-Null
