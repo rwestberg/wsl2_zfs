@@ -498,7 +498,7 @@ zfs --version
 '@
 
     $installScriptPath = Join-Path $WorkRoot 'install-runtime-debs.sh'
-    [System.IO.File]::WriteAllText($installScriptPath, $installScript, [System.Text.Encoding]::ASCII)
+    [System.IO.File]::WriteAllText($installScriptPath, $installScript.Replace("`r`n", "`n"), [System.Text.Encoding]::ASCII)
 
     $debWslPath = ConvertTo-WslPath -WindowsPath $debDirectory
     $installScriptWslPath = ConvertTo-WslPath -WindowsPath $installScriptPath
@@ -759,7 +759,7 @@ sync
 '@
 
     $mergeScriptPath = Join-Path $workRoot 'merge-overlay.sh'
-    [System.IO.File]::WriteAllText($mergeScriptPath, $mergeScript, [System.Text.Encoding]::ASCII)
+    [System.IO.File]::WriteAllText($mergeScriptPath, $mergeScript.Replace("`r`n", "`n"), [System.Text.Encoding]::ASCII)
 
     Write-Step "Resolving temporary paths inside WSL"
     $overlayWslPath = ConvertTo-WslPath -WindowsPath $overlay.OverlayDirectory

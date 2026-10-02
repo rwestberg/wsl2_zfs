@@ -114,6 +114,26 @@ $tempDirectory = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $workRoot = Join-Path $tempDirectory "wsl2-zfs-tests-$([guid]::NewGuid().ToString('N'))"
 try {
     New-Item -ItemType Directory -Path $workRoot | Out-Null
+    $installScriptPath = Join-Path $workRoot 'runtime-line-endings.sh'
+    $mergeScriptPath = Join-Path $workRoot 'merge-line-endings.sh'
+    $installScript = "set -euo pipefail`r`nprintf 'runtime ok\n'`r`n"
+    $mergeScript = "set -euo pipefail`r`nprintf 'merge ok\n'`r`n"
+    $bashWriters = @($ast.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+            $node.Member.Value -eq 'WriteAllText' -and
+            $node.Arguments[0].Extent.Text -in @('$installScriptPath', '$mergeScriptPath')
+    }, $true))
+    Assert-Equal $bashWriters.Count 2 'Find both generated Bash script writers'
+    foreach ($writer in $bashWriters) {
+        & ([scriptblock]::Create($writer.Extent.Text))
+    }
+    foreach ($bashScriptPath in @($installScriptPath, $mergeScriptPath)) {
+        Assert-Equal ([System.IO.File]::ReadAllText($bashScriptPath).Contains("`r")) $false 'Generated Bash uses LF'
+        & $BashPath $bashScriptPath
+        if ($LASTEXITCODE -ne 0) { throw 'Generated Bash line-ending check failed.' }
+    }
+    Write-Host 'PASS: generated Bash handles CRLF source strings'
     $toolsDirectory = Join-Path $workRoot 'tools with spaces'
     New-Item -ItemType Directory -Path $toolsDirectory | Out-Null
     $kernelPath = Join-Path $toolsDirectory 'kernel'
